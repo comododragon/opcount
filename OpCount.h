@@ -58,6 +58,8 @@ static cl::opt<unsigned int> DefTripCount("def-trip-count", cl::desc("Specify de
 static cl::opt<unsigned int> DefInnerTripCount("def-inner-trip-count", cl::desc("Specify default trip count for unresolved inner loops (depth > 1)"));
 /// -def-undefined-function-count=<FC>: if an undefined function was called, use <FC> as default function count.
 static cl::opt<unsigned int> DefUndefinedFunctionCount("def-undefined-function-count", cl::desc("Specify default count for undefined functions"));
+/// -count-mode=OPT: select which instructions to be counted
+static cl::opt<std::string> CountMode("count-mode", cl::desc("Specify which instructions should be counted (supported: all, fp)"));
 /// -verbose: print a lot of messages.
 static cl::opt<bool> Verbose("verbose", cl::desc("Show all performed calculations"));
 
@@ -96,6 +98,11 @@ std::string generateLine(std::string line, unsigned int level = 0, bool trim = t
 /// Main class.
 struct OpCount : public ModulePass {
 	static char ID;
+	/// Count mode enum.
+	enum {
+		COUNT_MODE_ALL = 0,
+		COUNT_MODE_FP = 1
+	};
 
 	//===--------------------------------------------------------------------===//
 	// Public methods.
@@ -106,6 +113,7 @@ struct OpCount : public ModulePass {
 		Optional<unsigned int> DefTripCountOp = None,
 		Optional<unsigned int> DefInnerTripCountOp = None,
 		Optional<unsigned int> DefUndefinedFunctionCountOp = None,
+		Optional<std::string> CountModeOp = None,
 		Optional<bool> VerboseOp = None
 	);
 
@@ -191,6 +199,8 @@ private:
 	unsigned int defaultTripCount;
 	unsigned int defaultInnerTripCount;
 	unsigned int defaultUndefinedFunctionCount;
+	unsigned int countMode;
+	std::string countModeStr;
 	bool verbose;
 
 	//===--------------------------------------------------------------------===//
@@ -213,6 +223,8 @@ private:
 		OpCount *opCountInst;
 		/// Adjacency list.
 		std::map<std::string, std::map<std::string, int>> adj;
+		/// Defines count mode when calculating longest path.
+		unsigned int countMode;
 		/// If true, a lot of messages are printed in the output console.
 		bool verbose;
 		/// Defines the base level for the messaging hierarchy.
@@ -229,7 +241,10 @@ private:
 		/// Based on a control-flow graph of a Function/Loop, create a graph (starting node H) substituting inner loops
 		/// by single nodes. AI is the AnalyserInterface created by the function. LD is a cache for Loops with resolved trip counts.
 		/// By transforming inner loops into nodes, back edges are removed and longest path search is simplified.
-		SimplifiedGraph(OpCount *inst, BasicBlock &H, AnalyserInterface &AI, OpCount::LoopsDescription &LD, int depth, bool verbose = false, unsigned int baseLevel = 0);
+		SimplifiedGraph(
+			OpCount *inst, BasicBlock &H, AnalyserInterface &AI, OpCount::LoopsDescription &LD,
+			int depth, unsigned int countMode = 0, bool verbose = false, unsigned int baseLevel = 0
+		);
 
 		/// Adds an edge between node u and v.
 		void addEdge(std::string u, std::string v, int weight);

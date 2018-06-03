@@ -49,11 +49,13 @@ OpCount::OpCount(
 	Optional<unsigned int> DefTripCountOp,
 	Optional<unsigned int> DefInnerTripCountOp,
 	Optional<unsigned int> DefUndefinedFunctionCountOp,
+	Optional<std::string> CountModeOp,
 	Optional<bool> VerboseOp
 ) : ModulePass(ID) {
 	Optional<unsigned int> DefTripCountProvided(DefTripCount);
 	Optional<unsigned int> DefInnerTripCountProvided(DefInnerTripCount);
 	Optional<unsigned int> DefUndefinedFunctionCountProvided(DefUndefinedFunctionCount);
+	Optional<std::string> CountModeProvided(CountMode);
 	Optional<bool> VerboseProvided(Verbose);
 
 	defaultTripCount = (DefTripCountProvided.hasValue() && (*DefTripCountProvided != 0))?
@@ -64,6 +66,22 @@ OpCount::OpCount(
 		*DefUndefinedFunctionCountProvided : DEFAULT_UNDEFINED_FUNCTION_COUNT;
 	verbose = VerboseProvided.hasValue()?
 		*VerboseProvided : false;
+
+	if(CountModeProvided.hasValue()) {
+		if("fp" == *CountModeProvided) {
+			// TODO
+			countMode = COUNT_MODE_FP;
+			countModeStr = "fp";
+		}
+		else {
+			countMode = COUNT_MODE_ALL;
+			countModeStr = "all";
+		}
+	}
+	else {
+		countMode = COUNT_MODE_ALL;
+		countModeStr = "all";
+	}
 }
 
 void OpCount::getAnalysisUsage(AnalysisUsage &AU) const {
@@ -75,7 +93,7 @@ void OpCount::getAnalysisUsage(AnalysisUsage &AU) const {
 bool OpCount::runOnModule(Module &M) {
 	errs() << "************************************\n";
 	errs() << "* OpCounter: IR Operations Counter *\n";
-	errs() << "* ************* v0.1 ************* *\n";
+	errs() << "* ************* v0.2 ************* *\n";
 	errs() << "* Author: Andre Bannwart Perina    *\n";
 	errs() << "************************************\n";
 
@@ -85,6 +103,7 @@ bool OpCount::runOnModule(Module &M) {
 	errs() << generateLine("Default Trip Count: " + std::to_string(defaultTripCount), 1);
 	errs() << generateLine("Default Inner Trip Count: " + std::to_string(defaultInnerTripCount), 1);
 	errs() << generateLine("Default Undefined Function Count: " + std::to_string(defaultUndefinedFunctionCount), 1);
+	errs() << generateLine("Count mode: " + countModeStr, 1);
 	errs() << generateLine("Verbose: " + std::to_string(verbose), 1);
 	errs() << generateSeparator();
 
@@ -108,6 +127,7 @@ bool OpCount::runOnModule(Module &M) {
 	// If count was found, print result
 	if(count) {
 		errs() << generateSeparator();
+		errs() << generateLine("Count mode: " + countModeStr);
 		errs() << generateLine("Longest path for __kernel function is " + std::to_string(count));
 		errs() << generateSeparator();
 	}
@@ -239,7 +259,7 @@ unsigned int OpCount::handleFunction(Function &F, unsigned int level) {
 				if(verbose) errs() << generateLine("Loop " + L.first, level + 1);
 				if(verbose) errs() << generateLine("Generating simplified graph", level + 2);
 				// Create a SimplifiedGraph for this loop
-				SimplifiedGraph G(this, *H, AI, LD, i, verbose, level + 3);
+				SimplifiedGraph G(this, *H, AI, LD, i, countMode, verbose, level + 3);
 				if(verbose) errs() << generateLine("Finding longest path", level + 2);
 				// Find the longest path for this loop and cache it in LD
 				LD[H->getName()].count = G.getLongestPath(H->getName());
@@ -250,7 +270,7 @@ unsigned int OpCount::handleFunction(Function &F, unsigned int level) {
 	if(verbose) errs() << generateLine("Calculating longest path of function", level);
 	if(verbose) errs() << generateLine("Generating simplified graph", level + 1);
 	// Create a SimplifiedGraph for this function
-	SimplifiedGraph G(this, F.getEntryBlock(), AI, LD, 0, verbose, level + 2);
+	SimplifiedGraph G(this, F.getEntryBlock(), AI, LD, 0, countMode, verbose, level + 2);
 	if(verbose) errs() << generateLine("Finding longest path", level + 1);
 	// Find the longest path for this function and cache it in FD
 	int count = G.getLongestPath(F.getEntryBlock().getName());
@@ -267,7 +287,10 @@ unsigned int OpCount::handleFunction(Function &F, unsigned int level) {
 /// Based on a control-flow graph of a Function/Loop, create a graph (starting node H) substituting inner loops
 /// by single nodes. AI is the AnalyserInterface created by the function. LD is a cache for Loops with resolved trip counts.
 /// By transforming inner loops into nodes, back edges are removed and longest path search is simplified.
-OpCount::SimplifiedGraph::SimplifiedGraph(OpCount *inst, BasicBlock &H, AnalyserInterface &AI, OpCount::LoopsDescription &LD, int depth, bool verbose, unsigned int baseLevel) {
+OpCount::SimplifiedGraph::SimplifiedGraph(
+	OpCount *inst, BasicBlock &H, AnalyserInterface &AI, OpCount::LoopsDescription &LD,
+	int depth, unsigned int countMode, bool verbose, unsigned int baseLevel
+) {
 	opCountInst = inst;
 	Loop *HL = AI.getLoopInfo().getLoopFor(&H);
 	unsigned int depthHL = HL? LD[HL->getName()].depth : 0;
@@ -275,6 +298,7 @@ OpCount::SimplifiedGraph::SimplifiedGraph(OpCount *inst, BasicBlock &H, Analyser
 	std::stack<const BasicBlock *> S;
 	std::stack<bool> SLoop;
 	std::set<std::string> visited;
+	this->countMode = countMode;
 	this->verbose = verbose;
 	this->baseLevel = baseLevel;
 
@@ -522,18 +546,23 @@ unsigned int OpCount::SimplifiedGraph::countNodeInsts(const BasicBlock &BB) {
 
 	// TODO: Será que eu deveria filtrar as instruções (e.g. contar somente aquelas que manipulam dados de E/S?)
 	for(const Instruction &I : BB) {
+		// TODO: Colocar aqui novos count modes
+		switch(countMode) {
+			// FP
+			case 1:
+				// TODO
+				break;
+			// All
+			default:
+				count++;
+				break;
+		}
+
 		// If this instruction is a call method, its longest path must be calculated as well
 		if(isa<CallInst>(I)) {
 			Function *IF = cast<CallInst>(I).getCalledFunction();
 			errs() << generateLine("Found function: " + IF->getName().str(), baseLevel);
-			count += (opCountInst->handleFunction(*IF, baseLevel + 1) + 1);
-			// Since handleFunction() generates new LoopInfo every time it is called, we have to re-call it
-			// to regenerate LoopInfo for function F (handleFunction generated LoopInfo for IF, which is
-			// not useful anymore
-			//LI = &(opCountInst->getAnalysis<LoopInfoWrapperPass>(F).getLoopInfo());
-		}
-		else {
-			count++;
+			count += opCountInst->handleFunction(*IF, baseLevel + 1);
 		}
 	}
 
