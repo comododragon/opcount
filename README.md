@@ -6,17 +6,24 @@
 
 ## Introduction
 
-The OpCount is an LLVM opt pass that can be used to count instructions in an OpenCL kernel considering the worst scenario. The longest path from a graph in the control-flow graph is used.
+The OpCount is an LLVM opt pass that can be used to count instructions in an OpenCL kernel considering the worst case scenario: the longest path from a graph in the control-flow graph is used.
 
 ## Licence
 
 This project is distributed under the University of Illinois Open Source License. See LICENSE.TXT for details.
 
+# Algorithms used in this project
+
+The following algorithms were used and adapted:
+
+* https://www.geeksforgeeks.org/find-longest-path-directed-acyclic-graph/
+* https://www.geeksforgeeks.org/iterative-depth-first-traversal/
+
 ## How to compile
 
 LLVM and Clang versions used: 7.0.0
 
-* Build LLVM and Clang by following steps 1 to 13 from this guide (https://llvm.org/docs/GettingStarted.html). Optional repositories are not required;.
+* Build LLVM and Clang by following steps 1 to 13 from this guide (https://llvm.org/docs/GettingStarted.html). Optional repositories are not required;
 * Access your LLVM source directory:
 ```
 $ cd /path/to/llvm/sources
@@ -102,4 +109,4 @@ For now, current counts are supported:
 
 ## Acknowledgements
 
-The project author would like to thank São Paulo Research Foundation (FAPESP), who funds the research where this project is instered (Grant 2016/18937-7).
+The project author would like to thank São Paulo Research Foundation (FAPESP), who funds the research where this project is insetred (Grant 2016/18937-7).
