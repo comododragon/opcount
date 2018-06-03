@@ -12,7 +12,7 @@ The OpCount is an LLVM opt pass that can be used to count instructions in an Ope
 
 This project is distributed under the University of Illinois Open Source License. See LICENSE.TXT for details.
 
-# Algorithms used in this project
+## Algorithms used in this project
 
 The following algorithms were used and adapted:
 
