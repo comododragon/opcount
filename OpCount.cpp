@@ -164,13 +164,13 @@ bool OpCount::runOnModule(Module &M) {
 			case COUNT_MODE_NOI:
 				errs() << generateLine("Longest path for __kernel function is " + std::to_string(count[0]));
 				errs() << generateLine("Number of bytes transferred in this path is " + std::to_string(count[1]));
-				errs() << generateLine("Naive operational intensity is " + std::to_string(count[1] / (float) count[0]) + " Bytes/Insts");
+				errs() << generateLine("Naive operational intensity is " + std::to_string(count[1] / (float) count[0]) + " bytes/insts");
 				errs() << generateSeparator();
 				break;
 			case COUNT_MODE_NMI:
 				errs() << generateLine("Longest path (bytes transferred) for __kernel function is " + std::to_string(count[0]));
 				errs() << generateLine("Number of instructions in this path is " + std::to_string(count[1]));
-				errs() << generateLine("Naive memory intensity is " + std::to_string(count[0] / (float) count[1]) + " Bytes/Insts");
+				errs() << generateLine("Naive memory intensity is " + std::to_string(count[0] / (float) count[1]) + " bytes/insts");
 				errs() << generateSeparator();
 				break;
 			default:

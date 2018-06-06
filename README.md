@@ -70,26 +70,28 @@ $ opt -load /path/to/libLLVMOpCount.so -opcount < kernel.ll > /dev/null
 ```
 ************************************
 * OpCounter: IR Operations Counter *
-* ************* v0.1 ************* *
+* ************* v0.3 ************* *
 * Author: Andre Bannwart Perina    *
 ************************************
-****************************************************************
-* OpCounter is using these values:                             *
-*  Default Trip Count: 300                                     *
-*  Default Inner Trip Count: 300                               *
-*  Default Undefined Function Count: 10                        *
-*  Verbose: 0                                                  *
-****************************************************************
-****************************************************************
-* Found __kernel function: olar                                *
-*    Found function: mulAdd                                    *
-*    Found function: mulAdd                                    *
-*    Found function: mulAdd                                    *
-*   Found function: get_global_id                              *
-****************************************************************
-****************************************************************
-* Longest path for __kernel function is 907354                 *
-****************************************************************
+**************************************************************************
+* OpCounter is using these values:                                       *
+*  Default trip count: 300                                               *
+*  Default inner trip count: 300                                         *
+*  Count mode: all                                                       *
+*  Verbose: 0                                                            *
+*  Default undefined function count: 10                                  *
+**************************************************************************
+**************************************************************************
+* Found __kernel function: olar                                          *
+*    Found function: mulAdd                                              *
+*    Found function: mulAdd                                              *
+*    Found function: mulAdd                                              *
+*   Found function: get_global_id                                        *
+**************************************************************************
+**************************************************************************
+* Count mode: all                                                        *
+* Longest path for __kernel function is 907354                           *
+**************************************************************************
 ```
 
 Some arguments can be passed to the pass:
@@ -103,6 +105,42 @@ Some arguments can be passed to the pass:
 	* ```noi```: naive operational intensity. Use all instruction count for longest path, but count the number of bytes transferred from/to memory (any address space) along this path as well. At last print the number of bytes divided by the number of total instructions in the path. If an undefined function is found, default undefined function count is used for instruction count. It is assumed that 30% of such instructions are load/stores transferring 4 bytes each;
 	* ```nmi```: naive memory intensity. Use the number of bytes transferred from/to memory (any address space) for longest path, but count all instructions along this path as well. At last print the number of bytes transferred divided by the number of total instructions in the path. If an undefined function is found, default undefined function count is used for instruction count. It is assumed that 30% of such instructions are load/stores transferring 4 bytes each.
 * Verbose (```-verbose```): print a lot of stuff.
+
+As an example, to calculate naive operational intensity using default inner trip count 32:
+```
+$ opt -load /path/to/libLLVMOpCount.so -opcount -count-mode=noi -def-inner-trip-count=32 < kernel.ll > /dev/null
+```
+
+A report similar to this will be printed:
+```
+************************************
+* OpCounter: IR Operations Counter *
+* ************* v0.3 ************* *
+* Author: Andre Bannwart Perina    *
+************************************
+**************************************************************************
+* OpCounter is using these values:                                       *
+*  Default trip count: 300                                               *
+*  Default inner trip count: 32                                          *
+*  Count mode: noi                                                       *
+*  Verbose: 0                                                            *
+*  Default undefined function count: 10                                  *
+*  Default undefined function byte store count: 12                       *
+**************************************************************************
+**************************************************************************
+* Found __kernel function: olar                                          *
+*    Found function: mulAdd                                              *
+*    Found function: mulAdd                                              *
+*    Found function: mulAdd                                              *
+*   Found function: get_global_id                                        *
+**************************************************************************
+**************************************************************************
+* Count mode: noi                                                        *
+* Longest path for __kernel function is 907354                           *
+* Number of bytes transferred in this path is 1241876                    *
+* Naive operational intensity is 1.368679 bytes/insts                    *
+**************************************************************************
+```
 
 ## Description
 
