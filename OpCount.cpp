@@ -484,6 +484,7 @@ int4 OpCount::SimplifiedGraph::countNodeInsts(const BasicBlock &BB) {
 					pointerType = cast<PointerType>(cast<LoadInst>(I).getPointerOperand()->getType());
 				if(isa<StoreInst>(I))
 					pointerType = cast<PointerType>(cast<StoreInst>(I).getPointerOperand()->getType());
+				// If I is load or store, pointerType is not NULL. Calculate the amount of transferred data
 				if(pointerType)
 					count[1] += DL->getTypeStoreSize(pointerType->getPointerElementType());
 
@@ -507,6 +508,7 @@ int4 OpCount::SimplifiedGraph::countNodeInsts(const BasicBlock &BB) {
 					pointerType = cast<PointerType>(cast<LoadInst>(I).getPointerOperand()->getType());
 				if(isa<StoreInst>(I))
 					pointerType = cast<PointerType>(cast<StoreInst>(I).getPointerOperand()->getType());
+				// If I is load or store, pointerType is not NULL. Calculate the amount of transferred data
 				if(pointerType)
 					count[0] += DL->getTypeStoreSize(pointerType->getPointerElementType());
 
