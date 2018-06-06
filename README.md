@@ -142,6 +142,8 @@ A report similar to this will be printed:
 **************************************************************************
 ```
 
+By using the ```-verbose``` flag, informations such as loop trip counts inferring and longest path for each function are exposed.
+
 ## Description
 
 This opt pass is mainly divided into two steps:
@@ -160,9 +162,9 @@ Finding the longest path in a graph with cycles is NP-Hard. However, simplificat
 For now, current counts are supported:
 * All count: all instruction types are considered.
 * Floating-point count: only floating-point arithmetic and control-flow instructions are considered (IN PROGRESS);
-* Naive operational intensity: After traversing the longest path using all count, divide the number of bytes transferred from/to memory in this path by the all instruction count;
-* Naive memory intensity: After traversing the longest path considering bytes transferred from/to memory, divide this number by the all instruction count in this path.
+* Naive operational intensity: after traversing the longest path using all count, divide the number of bytes transferred from/to memory in this path by the all instruction count;
+* Naive memory intensity: after traversing the longest path considering bytes transferred from/to memory, divide this number by the all instruction count in this path.
 
 ## Acknowledgements
 
-The project author would like to thank São Paulo Research Foundation (FAPESP), who funds the research where this project is insetred (Grant 2016/18937-7).
+The project author would like to thank São Paulo Research Foundation (FAPESP), who funds the research where this project is inserted (Grant 2016/18937-7).
