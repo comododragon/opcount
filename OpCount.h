@@ -9,10 +9,10 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This class implements a pass to find the longest execution path of a LLVM
-// IR. If loops are found, its trip count is used. If such information is
-// not available, a default trip count is used. If a undefined function is
-// used, a default count is used.
+// This class implements several metrics that may be calculated by traversing
+// the longest execution path of a LLVM IR. If loops are found, its trip count
+// is used. If such information is not available, a default trip count is used.
+// If a undefined function is used, a default count is used.
 //
 // Note: The SimplifiedGraph's depth first traversal and longest path
 // algorithms were taken from geeksforgeeks.org:
@@ -22,6 +22,11 @@
 
 #ifndef LIB_TRANSFORMS_OPCOUNT_OPCOUNT_H
 #define LIB_TRANSFORMS_OPCOUNT_OPCOUNT_H
+
+// Local includes
+#include "int4.h"
+#include "FunctionsDescription.h"
+#include "LoopsDescription.h"
 
 // Standard C++ includes
 #include <set>
@@ -41,12 +46,13 @@
 #define DEFAULT_TRIP_COUNT 300
 /// If a non-top-level loop has unspecified trip count and no default trip count was specified, this value is used.
 #define DEFAULT_INNER_TRIP_COUNT 300
-/// If an undefined function is called and no default undefined function count was specifiec, this value is used.
+/// If an undefined function is called and no default undefined function count was specified, this value is used.
 #define DEFAULT_UNDEFINED_FUNCTION_COUNT 10
 // Defines the size of the console line for printing
-#define LINE_WIDTH 60
+#define LINE_WIDTH 70
 
 using namespace llvm;
+using namespace opcountutils;
 
 //===--------------------------------------------------------------------===//
 // Possible pass arguments.
@@ -58,8 +64,12 @@ static cl::opt<unsigned int> DefTripCount("def-trip-count", cl::desc("Specify de
 static cl::opt<unsigned int> DefInnerTripCount("def-inner-trip-count", cl::desc("Specify default trip count for unresolved inner loops (depth > 1)"));
 /// -def-undefined-function-count=<FC>: if an undefined function was called, use <FC> as default function count.
 static cl::opt<unsigned int> DefUndefinedFunctionCount("def-undefined-function-count", cl::desc("Specify default count for undefined functions"));
-/// -count-mode=OPT: select which instructions to be counted
-static cl::opt<std::string> CountMode("count-mode", cl::desc("Specify which instructions should be counted (supported: all, fp)"));
+/// -count-mode=OPT: specify how nodes should be counted.
+static cl::opt<std::string> CountMode("count-mode", cl::desc("Specify how nodes should be counted (check pass docs for more info)"));
+#if 0
+/// -mem-analysis: perform memory analysis (e.g. global read/write accesses).
+static cl::opt<bool> MemAnalysis("mem-analysis", cl::desc("Perform memory analysis (e.g. global read/write accesses)"));
+#endif
 /// -verbose: print a lot of messages.
 static cl::opt<bool> Verbose("verbose", cl::desc("Show all performed calculations"));
 
@@ -82,7 +92,7 @@ std::string generateLine(std::string line, unsigned int level = 0, bool trim = t
 	// Trim line if needed
 	if(trim) {
 		if((((int) lineWidth) - ((int) line.length()) - ((int) levelString.length()) - 3) < 0)
-			line = line.substr(0, LINE_WIDTH - 3) + "...";
+		line = line.substr(0, LINE_WIDTH - levelString.length() - 3) + "...";
 	}
 
 	// Add spaces and final touches before returning it
@@ -100,22 +110,24 @@ struct OpCount : public ModulePass {
 	static char ID;
 	/// Count mode enum.
 	enum {
+		// All instructions are counted for longest path.
 		COUNT_MODE_ALL = 0,
-		COUNT_MODE_FP = 1
+		// Only floating-point ops are counted for longest path.
+		COUNT_MODE_FP = 1,
+		// Naive operational intensity: all instructions are counted for longest path.
+		// Along this path, all load and stores are counted as well.
+		COUNT_MODE_NOI = 2,
+		// Naive memory intensity: the longest path is decided by the longest amount
+		// of loads and stores. Along this path, all instructions are counted as well.
+		COUNT_MODE_NMI = 3
 	};
 
 	//===--------------------------------------------------------------------===//
 	// Public methods.
 	//===--------------------------------------------------------------------===//
 
-	/// Default constructor with possible arguments for this pass.
-	OpCount(
-		Optional<unsigned int> DefTripCountOp = None,
-		Optional<unsigned int> DefInnerTripCountOp = None,
-		Optional<unsigned int> DefUndefinedFunctionCountOp = None,
-		Optional<std::string> CountModeOp = None,
-		Optional<bool> VerboseOp = None
-	);
+	/// Default constructor.
+	OpCount();
 
 	void getAnalysisUsage(AnalysisUsage &AU) const override;
 
@@ -123,6 +135,22 @@ struct OpCount : public ModulePass {
 	bool runOnModule(Module &M) override;
 
 private:
+
+	//===--------------------------------------------------------------------===//
+	// Private attributes
+	//===--------------------------------------------------------------------===//
+
+	// Functions descriptor cache
+	FunctionsDescription FD;
+	/// DataLayout used to get size of types referred by load/stores.
+	DataLayout *DL;
+	// Values read from arguments
+	unsigned int defaultTripCount;
+	unsigned int defaultInnerTripCount;
+	int4 defaultUndefinedFunctionCount;
+	unsigned int countMode;
+	std::string countModeStr;
+	bool verbose;
 
 	//===--------------------------------------------------------------------===//
 	// Inner class: AnalyserInterface
@@ -168,61 +196,16 @@ private:
 	};
 
 	//===--------------------------------------------------------------------===//
-	// Inner types.
-	//===--------------------------------------------------------------------===//
-
-	/// Loop descriptor.
-	struct LoopDescription {
-		/// BasicBlocks contained in this loop.
-		std::vector<std::string> BBs;
-		/// Loop depth (greater than 1).
-		unsigned int depth;
-		/// Longest path inside this loop.
-		unsigned int count;
-		/// Amount of times this loop is repeated.
-		unsigned int tripCount;
-
-		LoopDescription() : depth(0), count(0), tripCount(0) { }
-		LoopDescription(unsigned int depth, unsigned int tripCount) : depth(depth), count(0), tripCount(tripCount) { }
-	};
-	/// Defines a (string; LoopDescription) pair.
-	typedef std::pair<std::string, LoopDescription> LoopDescriptionPair;
-	/// Defines a dictionary of LoopDescriptions. Each loop is indexed by its name (((Loop *) L)->getName()).
-	typedef std::map<std::string, LoopDescription> LoopsDescription;
-	/// Function descriptor. The int value defines this function's longest path.
-	typedef std::pair<std::string, int> FunctionDescriptionPair;
-	/// Defines a dictionary of FunctionDescriptionPairs. Each function is indexed by its name (((Function *) F)->getName()).
-	typedef std::map<std::string, int> FunctionsDescription;
-	// Functions descriptor cache
-	FunctionsDescription FD;
-	// Values read from arguments
-	unsigned int defaultTripCount;
-	unsigned int defaultInnerTripCount;
-	unsigned int defaultUndefinedFunctionCount;
-	unsigned int countMode;
-	std::string countModeStr;
-	bool verbose;
-
-	//===--------------------------------------------------------------------===//
-	// Private methods.
-	//===--------------------------------------------------------------------===//
-
-	/// Add a loop to LoopsDescription. If such loop has a subloop, this function
-	/// is called recursively.
-	unsigned int handleLoop(Loop &L, AnalyserInterface &AI, LoopsDescription &LD, unsigned int level);
-
-	/// Find the longest path for a function.
-	unsigned int handleFunction(Function &F, unsigned int level = 0);
-
-	//===--------------------------------------------------------------------===//
 	// Inner class: SimplifiedGraph
 	//===--------------------------------------------------------------------===//
 
 	class SimplifiedGraph {
 		/// SimplifiedGraph needs an instance of OpCount to work.
 		OpCount *opCountInst;
+		/// DataLayout used to get size of types referred by load/stores.
+		DataLayout *DL;
 		/// Adjacency list.
-		std::map<std::string, std::map<std::string, int>> adj;
+		std::map<std::string, std::map<std::string, int4>> adj;
 		/// Defines count mode when calculating longest path.
 		unsigned int countMode;
 		/// If true, a lot of messages are printed in the output console.
@@ -230,8 +213,8 @@ private:
 		/// Defines the base level for the messaging hierarchy.
 		unsigned int baseLevel;
 
-		// Count amount of instructions inside BB. If this BB makes a call, its count is also considered.
-		unsigned int countNodeInsts(const BasicBlock &BB);
+		// Count specified metric by countMode for this BB/Node. If this BB makes a call, its count is also considered.
+		int4 countNodeInsts(const BasicBlock &BB);
 
 		// Perform a topological sort in this graph starting from node v
 		void topologicalSort(std::string v, std::set<std::string> &visited, std::stack<std::string> &S);
@@ -242,16 +225,29 @@ private:
 		/// by single nodes. AI is the AnalyserInterface created by the function. LD is a cache for Loops with resolved trip counts.
 		/// By transforming inner loops into nodes, back edges are removed and longest path search is simplified.
 		SimplifiedGraph(
-			OpCount *inst, BasicBlock &H, AnalyserInterface &AI, OpCount::LoopsDescription &LD,
-			int depth, unsigned int countMode = 0, bool verbose = false, unsigned int baseLevel = 0
+			OpCount *inst, BasicBlock &H, AnalyserInterface &AI, LoopsDescription &LD, DataLayout &DL,
+			int depth, unsigned int countMode = COUNT_MODE_ALL, bool verbose = false, unsigned int baseLevel = 0
 		);
 
 		/// Adds an edge between node u and v.
-		void addEdge(std::string u, std::string v, int weight);
+		void addEdge(std::string u, std::string v, int4 weight);
 
-		/// Get longest path for this graph starting from node s.
-		int getLongestPath(std::string s);
+		/// Get longest path for this graph starting from node s. Since SimplifiedGraph does not have back edges,
+		/// this problem is not NP-Hard (phew...). Graph weights are int tuples. By definition, the first value
+		/// is used to calculate the longest path. The other 3 integer values can be used to carry useful information
+		/// along the longest path.
+		int4 getLongestPath(std::string s);
 	};
+
+	//===--------------------------------------------------------------------===//
+	// Private methods.
+	//===--------------------------------------------------------------------===//
+
+	/// Add a loop to LoopsDescription. If such loop has a subloop, this function is called recursively.
+	unsigned int handleLoop(Loop &L, AnalyserInterface &AI, LoopsDescription &LD, unsigned int level);
+
+	/// Calculate metrics for this function.
+	int4 handleFunction(Function &F, DataLayout &DL, unsigned int level = 0);
 };
 
 }

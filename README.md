@@ -6,7 +6,7 @@
 
 ## Introduction
 
-The OpCount is an LLVM opt pass that can be used to count instructions in an OpenCL kernel considering the worst case scenario: the longest path from a graph in the control-flow graph is used.
+The OpCount is an LLVM opt pass that can be used to count several metrics in an OpenCL kernel, considering the worst case scenario by using the longest path from the control-flow graph. The longest path is calculated using the selected metric.
 
 ## Licence
 
@@ -18,6 +18,18 @@ The following algorithms were used and adapted:
 
 * https://www.geeksforgeeks.org/find-longest-path-directed-acyclic-graph/
 * https://www.geeksforgeeks.org/iterative-depth-first-traversal/
+
+## Files description
+
+This repository should be placed inside the LLVM source tree under the folder ```/path/to/llvm/sources/lib/Transforms/OpCount``` as described in the next section. This repository is composed by:
+
+* ```README.md```: this file;
+* ```LICENSE.txt```: description of licence used by this repository;
+* ```CMakeLists.txt```: CMakeList file for generating build files;
+* ```LoopsDescription.cpp|h```: source and header files for LoopsDescription type;
+* ```FunctionsDescription.h```: header file for FunctionsDescription type;
+* ```int4.cpp|h```: source and header files for int4 (4-tuple integer) class;
+* ```OpCount.cpp|h```: source and header files for the pass itself and some inner classes.
 
 ## How to compile
 
@@ -84,10 +96,13 @@ Some arguments can be passed to the pass:
 
 * Default trip count (```-def-trip-count=N```): for top-level loops with unknown trip count, use N;
 * Default inner trip count (```-def-inner-trip-count=N```): for non top-level loops with unknown trip count, use N;
-* Default undefined function count (```-def-undefined-function-count=N```): for functions that are undefined (IR not available), use N;
-* Verbose (```-verbose```): print a lot of stuff
+* Default undefined function count (```-def-undefined-function-count=N```): for functions that are undefined (IR not available), use N as longest path count;
 * Count mode (```-count-mode=OPT```): select count mode OPT, where OPT may be:
 	* ```all```: count all types of IR instructions.
+	* ```fp```: count only floating-point arithmetic (IN PROGRESS);
+	* ```noi```: naive operational intensity. Use all instruction count for longest path, but count the number of bytes transferred from/to memory (any address space) along this path as well. At last print the number of bytes divided by the number of total instructions in the path. If an undefined function is found, default undefined function count is used for instruction count. It is assumed that 30% of such instructions are load/stores transferring 4 bytes each;
+	* ```nmi```: naive memory intensity. Use the number of bytes transferred from/to memory (any address space) for longest path, but count all instructions along this path as well. At last print the number of bytes transferred divided by the number of total instructions in the path. If an undefined function is found, default undefined function count is used for instruction count. It is assumed that 30% of such instructions are load/stores transferring 4 bytes each.
+* Verbose (```-verbose```): print a lot of stuff.
 
 ## Description
 
@@ -105,7 +120,10 @@ Finding the longest path in a graph with cycles is NP-Hard. However, simplificat
 * After all loops were calculated and substituted by abstract basic blocks, the kernel function control-flow graph won't have any back edges. Therefore, the longest path algorithm for acyclic directed graphs can be applied.
 
 For now, current counts are supported:
-* All-count: all instruction types are considered.
+* All count: all instruction types are considered.
+* Floating-point count: only floating-point arithmetic and control-flow instructions are considered (IN PROGRESS);
+* Naive operational intensity: After traversing the longest path using all count, divide the number of bytes transferred from/to memory in this path by the all instruction count;
+* Naive memory intensity: After traversing the longest path considering bytes transferred from/to memory, divide this number by the all instruction count in this path.
 
 ## Acknowledgements
 
