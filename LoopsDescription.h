@@ -9,7 +9,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Describes a loop in terms of its longest path, trip count, etc.
+// Describes a loop in terms of its trip count, depth and all contained BBs.
 //
 //===----------------------------------------------------------------------===//
 
@@ -19,18 +19,22 @@
 // Local includes
 #include "int4.h"
 
+#include <map>
+#include <vector>
+
 #include "llvm/Pass.h"
 #include "llvm/IR/Module.h"
+
+using namespace llvm;
 
 namespace opcountutils {
 
 /// Loop descriptor.
 struct LoopDescription {
-	/// BasicBlocks contained in this loop.
-	std::vector<std::string> BBs;
-
 	/// Loop depth (greater than 1).
 	unsigned int depth;
+	/// Name of all basic blocks contained in this loop.
+	std::vector<std::string> BBs;
 
 	/// Longest path inside this loop. The other 3 int values can carry some useful information.
 	int4 count;
@@ -38,15 +42,12 @@ struct LoopDescription {
 	/// Amount of times this loop is repeated.
 	unsigned int tripCount;
 
-	/// False if longest path was not calculated yet.
-	bool calculated;
-
 	LoopDescription();
 
 	LoopDescription(unsigned int depth, unsigned int tripCount);
 
-	/// Calculate longest path count.
-	void calculate(int4 count);
+	/// Return true if this loop contains basic block BB.
+	bool contains(const BasicBlock &BB);
 };
 
 /// Defines a (string; LoopDescription) pair.

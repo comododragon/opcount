@@ -151,13 +151,15 @@ This opt pass is mainly divided into two steps:
 * Calculate the number of instructions in each basic block;
 * Find the longest path in the control-flow graph considering known trip counts for loops or default values when loops bounds are unknown;
 
-Finding the longest path in a graph with cycles is NP-Hard. However, simplifications in the control-flow graphs can be performed to remove cycles:
+Finding the longest path in a graph with cycles is NP-Hard. However, by using finite trip counts in the back-edges, it is possible to simplify
+the graph into acyclic. The flow of OpCount is:
 
-* Find all loops in the control-flow graph;
-* Find the longest path for all innermost loops (IL) considering the partial control-flow graph related to this loop (i.e. there are no cycles);
-* For all loops (CL) containing the loops IL, substitute the partial control-flow graph related to IL by an abstract basic block with the longest path cost for IL multiplied by IL trip count (if known, otherwise use a customisable default value), thus removing IL back-edge;
-* Perform the previous step by iteratively increasing the loop nesting level;
-* After all loops were calculated and substituted by abstract basic blocks, the kernel function control-flow graph won't have any back edges. Therefore, the longest path algorithm for acyclic directed graphs can be applied.
+* Calculate trip counts for all loops in this control-flow graph. If it's not possible to calculate, use a default value;
+* Find all loop back-edges in this control-flow graph;
+* Connect all leaf basic blocks ```l``` to terminator nodes;
+* Add weights to the CFG edges as follows: count specified metric in a basic block ```u``` (e.g. ```all``` count mode would return the number of instructions inside ```u```). Use this count as weight for all edges leaving ```u```. If ```u``` is inside one or more loops, multiply the count result by all loop's trip counts that contains ```u```;
+	* If ```u``` contains a function call, this procedure is recursively called to handle such function as well;
+* Use the longest path search algorithm for acyclic graphs, ignoring back-edges.
 
 For now, current counts are supported:
 * All count: all instruction types are considered.

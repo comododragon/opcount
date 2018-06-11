@@ -20,6 +20,7 @@
 #include "int4.h"
 
 #include <map>
+#include <vector>
 
 namespace opcountutils {
 
@@ -29,6 +30,12 @@ typedef std::pair<std::string, int4> FunctionDescriptionPair;
 
 /// Defines a dictionary of FunctionDescriptionPairs. Each function is indexed by its name (((Function *) F)->getName()).
 typedef std::map<std::string, int4> FunctionsDescription;
+
+/// Defines a pair source-destination for a back-edge.
+typedef std::pair<std::string, std::string> BackedgePair;
+
+/// Defines a vector containing all back-edges for a given function.
+typedef std::vector<BackedgePair> FunctionBackedgesPairs;
 
 }
 

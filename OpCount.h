@@ -73,6 +73,14 @@ static cl::opt<bool> MemAnalysis("mem-analysis", cl::desc("Perform memory analys
 /// -verbose: print a lot of messages.
 static cl::opt<bool> Verbose("verbose", cl::desc("Show all performed calculations"));
 
+//===--------------------------------------------------------------------===//
+// Helper function implemented in CFG.cpp (CFG.h has no header for it).
+//===--------------------------------------------------------------------===//
+
+namespace llvm {
+	void FindFunctionBackedges(const Function &F, SmallVectorImpl<std::pair<const BasicBlock*,const BasicBlock*> > &Result);
+}
+
 namespace {
 
 //===--------------------------------------------------------------------===//
@@ -140,7 +148,7 @@ private:
 	// Private attributes
 	//===--------------------------------------------------------------------===//
 
-	// Functions descriptor cache
+	/// Functions descriptor cache.
 	FunctionsDescription FD;
 	/// DataLayout used to get size of types referred by load/stores.
 	DataLayout *DL;
@@ -193,6 +201,12 @@ private:
 		/// Therefore such analysis must be recreated for the requested function and activeFunction is
 		/// updated.
 		ScalarEvolution &getSE(void);
+
+#if 0
+		/// Similar to calling getLoopInfo() and getSE() without actually using the return value.
+		/// This method refreshes LoopInfo and ScalarEvolution to the correct function.
+		void refresh(void);
+#endif
 	};
 
 	//===--------------------------------------------------------------------===//
@@ -213,7 +227,11 @@ private:
 		/// Defines the base level for the messaging hierarchy.
 		unsigned int baseLevel;
 
-		// Count specified metric by countMode for this BB/Node. If this BB makes a call, its count is also considered.
+		// Check if basic block BB is inside one or more loops. If positive, return the product of all loop trip counts
+		// that contains BB
+		int tripCountsFactor(const BasicBlock &BB, LoopsDescription &LD);
+
+		// Count specified metric by countMode for this BB/Node. If this BB makes a call, its count is also considered
 		int4 countNodeInsts(const BasicBlock &BB);
 
 		// Perform a topological sort in this graph starting from node v
@@ -221,18 +239,18 @@ private:
 
 	public:
 
-		/// Based on a control-flow graph of a Function/Loop, create a graph (starting node H) substituting inner loops
-		/// by single nodes. AI is the AnalyserInterface created by the function. LD is a cache for Loops with resolved trip counts.
-		/// By transforming inner loops into nodes, back edges are removed and longest path search is simplified.
+		/// Starting from basic block H inside a control-flow graph, find the longest path considering the metric specified in countMode.
+		/// Back-edges are ignored according to FBP. If a visited node is inside one or more loops, its weight is multiplied by all loop
+		/// trip counts where it is contained (trip counts are stored in LD).
 		SimplifiedGraph(
-			OpCount *inst, BasicBlock &H, AnalyserInterface &AI, LoopsDescription &LD, DataLayout &DL,
-			int depth, unsigned int countMode = COUNT_MODE_ALL, bool verbose = false, unsigned int baseLevel = 0
+			OpCount *inst, BasicBlock &H, LoopsDescription &LD, DataLayout &DL, FunctionBackedgesPairs &FBP, 
+			unsigned int countMode = COUNT_MODE_ALL, bool verbose = false, unsigned int baseLevel = 0
 		);
 
 		/// Adds an edge between node u and v.
 		void addEdge(std::string u, std::string v, int4 weight);
 
-		/// Get longest path for this graph starting from node s. Since SimplifiedGraph does not have back edges,
+		/// Get longest path for this graph starting from node s. Since SimplifiedGraph does not have back-edges,
 		/// this problem is not NP-Hard (phew...). Graph weights are int tuples. By definition, the first value
 		/// is used to calculate the longest path. The other 3 integer values can be used to carry useful information
 		/// along the longest path.
@@ -244,7 +262,7 @@ private:
 	//===--------------------------------------------------------------------===//
 
 	/// Add a loop to LoopsDescription. If such loop has a subloop, this function is called recursively.
-	unsigned int handleLoop(Loop &L, AnalyserInterface &AI, LoopsDescription &LD, unsigned int level);
+	void handleLoop(Loop &L, AnalyserInterface &AI, LoopsDescription &LD, unsigned int level);
 
 	/// Calculate metrics for this function.
 	int4 handleFunction(Function &F, DataLayout &DL, unsigned int level = 0);

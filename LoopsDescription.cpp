@@ -9,7 +9,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Describes a loop in terms of its longest path, trip count, etc.
+// Describes a loop in terms of its trip count, depth and all contained BBs.
 //
 //===----------------------------------------------------------------------===//
 
@@ -17,20 +17,20 @@
 #include "LoopsDescription.h"
 #include "int4.h"
 
+#include "llvm/Pass.h"
+#include "llvm/IR/Module.h"
+
+using namespace llvm;
+
 namespace opcountutils {
 
-LoopDescription::LoopDescription() : depth(0), tripCount(0) {
-	calculated = false;
-}
+LoopDescription::LoopDescription() : depth(0), tripCount(0) { }
 
-LoopDescription::LoopDescription(unsigned int depth, unsigned int tripCount) : depth(depth), tripCount(tripCount) {
-	calculated = false;
-}
+LoopDescription::LoopDescription(unsigned int depth, unsigned int tripCount) : depth(depth), tripCount(tripCount) { }
 
-/// Calculate longest path count.
-void LoopDescription::calculate(int4 count) {
-	this->count = count;
-	calculated = true;
+/// Return true if this loop contains basic block BB.
+bool LoopDescription::contains(const BasicBlock &BB) {
+	return (std::find(BBs.begin(), BBs.end(), BB.getName()) != BBs.end());
 }
 
 }
