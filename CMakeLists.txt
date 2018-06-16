@@ -1,5 +1,6 @@
 add_library(LLVMOpCount MODULE
 	# List your source files here.
+	helper.cpp
 	int4.cpp
 	LoopsDescription.cpp
 	OpCount.cpp

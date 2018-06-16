@@ -24,11 +24,13 @@
 #define LIB_TRANSFORMS_OPCOUNT_OPCOUNT_H
 
 // Local includes
+#include "helper.h"
 #include "int4.h"
 #include "FunctionsDescription.h"
 #include "LoopsDescription.h"
 
 // Standard C++ includes
+#include <cstdint>
 #include <set>
 #include <stack>
 
@@ -48,8 +50,6 @@
 #define DEFAULT_INNER_TRIP_COUNT 300
 /// If an undefined function is called and no default undefined function count was specified, this value is used.
 #define DEFAULT_UNDEFINED_FUNCTION_COUNT 10
-// Defines the size of the console line for printing
-#define LINE_WIDTH 70
 
 using namespace llvm;
 using namespace opcountutils;
@@ -59,17 +59,13 @@ using namespace opcountutils;
 //===--------------------------------------------------------------------===//
 
 /// -def-trip-count=<TP>: if a loop (top-level) trip count was not possible to infer, use <TP> instead.
-static cl::opt<unsigned int> DefTripCount("def-trip-count", cl::desc("Specify default trip count for unresolved outer loops (depth == 1)"));
+static cl::opt<int> DefTripCount("def-trip-count", cl::desc("Specify default trip count for unresolved outer loops (depth == 1)"));
 /// -def-inner-trip-count=<TP>: if a loop (inner) trip count was not possible to infer, use <TP> instead.
-static cl::opt<unsigned int> DefInnerTripCount("def-inner-trip-count", cl::desc("Specify default trip count for unresolved inner loops (depth > 1)"));
+static cl::opt<int> DefInnerTripCount("def-inner-trip-count", cl::desc("Specify default trip count for unresolved inner loops (depth > 1)"));
 /// -def-undefined-function-count=<FC>: if an undefined function was called, use <FC> as default function count.
-static cl::opt<unsigned int> DefUndefinedFunctionCount("def-undefined-function-count", cl::desc("Specify default count for undefined functions"));
+static cl::opt<int> DefUndefinedFunctionCount("def-undefined-function-count", cl::desc("Specify default count for undefined functions"));
 /// -count-mode=OPT: specify how nodes should be counted.
 static cl::opt<std::string> CountMode("count-mode", cl::desc("Specify how nodes should be counted (check pass docs for more info)"));
-#if 0
-/// -mem-analysis: perform memory analysis (e.g. global read/write accesses).
-static cl::opt<bool> MemAnalysis("mem-analysis", cl::desc("Perform memory analysis (e.g. global read/write accesses)"));
-#endif
 /// -verbose: print a lot of messages.
 static cl::opt<bool> Verbose("verbose", cl::desc("Show all performed calculations"));
 
@@ -82,32 +78,6 @@ namespace llvm {
 }
 
 namespace {
-
-//===--------------------------------------------------------------------===//
-// Helper functions for fancy console printing.
-//===--------------------------------------------------------------------===//
-
-/// Generate a shiny separator in the console log.
-std::string generateSeparator(unsigned int lineWidth = LINE_WIDTH) {
-	return std::string(lineWidth + 4, '*') + "\n";
-}
-
-/// Generate a fancy bordered line in the console log. Level defines the amount of space to put before the string.
-/// If trim is true, the input string will be trimmed to fit in lineWidth + level.
-std::string generateLine(std::string line, unsigned int level = 0, bool trim = true, unsigned int lineWidth = LINE_WIDTH) {
-	std::string levelString = level? std::string(level, ' ') : "";
-
-	// Trim line if needed
-	if(trim) {
-		if((((int) lineWidth) - ((int) line.length()) - ((int) levelString.length()) - 3) < 0)
-		line = line.substr(0, LINE_WIDTH - levelString.length() - 3) + "...";
-	}
-
-	// Add spaces and final touches before returning it
-	int space = lineWidth - line.length() - levelString.length();
-	std::string spaceString = (space > 0)? std::string(space, ' ') : "";
-	return "* " + levelString + line + spaceString + " *\n";
-}
 
 //===--------------------------------------------------------------------===//
 // Main class.
@@ -153,8 +123,8 @@ private:
 	/// DataLayout used to get size of types referred by load/stores.
 	DataLayout *DL;
 	// Values read from arguments
-	unsigned int defaultTripCount;
-	unsigned int defaultInnerTripCount;
+	int64_t defaultTripCount;
+	int64_t defaultInnerTripCount;
 	int4 defaultUndefinedFunctionCount;
 	unsigned int countMode;
 	std::string countModeStr;
@@ -201,12 +171,6 @@ private:
 		/// Therefore such analysis must be recreated for the requested function and activeFunction is
 		/// updated.
 		ScalarEvolution &getSE(void);
-
-#if 0
-		/// Similar to calling getLoopInfo() and getSE() without actually using the return value.
-		/// This method refreshes LoopInfo and ScalarEvolution to the correct function.
-		void refresh(void);
-#endif
 	};
 
 	//===--------------------------------------------------------------------===//
@@ -229,7 +193,7 @@ private:
 
 		// Check if basic block BB is inside one or more loops. If positive, return the product of all loop trip counts
 		// that contains BB
-		int tripCountsFactor(const BasicBlock &BB, LoopsDescription &LD);
+		int64_t tripCountsFactor(const BasicBlock &BB, LoopsDescription &LD);
 
 		// Count specified metric by countMode for this BB/Node. If this BB makes a call, its count is also considered
 		int4 countNodeInsts(const BasicBlock &BB);

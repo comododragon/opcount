@@ -27,6 +27,7 @@
 #include "LoopsDescription.h"
 
 // Standard C++ includes
+#include <cstdint>
 #include <set>
 #include <stack>
 
@@ -51,9 +52,9 @@ namespace {
 
 /// Default constructor with possible arguments for this pass.
 OpCount::OpCount() : ModulePass(ID) {
-	Optional<unsigned int> DefTripCountProvided(DefTripCount);
-	Optional<unsigned int> DefInnerTripCountProvided(DefInnerTripCount);
-	Optional<unsigned int> DefUndefinedFunctionCountProvided(DefUndefinedFunctionCount);
+	Optional<int> DefTripCountProvided(DefTripCount);
+	Optional<int> DefInnerTripCountProvided(DefInnerTripCount);
+	Optional<int> DefUndefinedFunctionCountProvided(DefUndefinedFunctionCount);
 	Optional<std::string> CountModeProvided(CountMode);
 	Optional<bool> VerboseProvided(Verbose);
 
@@ -166,19 +167,18 @@ bool OpCount::runOnModule(Module &M) {
 				errs() << generateLine("Longest path for __kernel function is " + std::to_string(count[0]));
 				errs() << generateLine("Number of bytes transferred in this path is " + std::to_string(count[1]));
 				errs() << generateLine("Naive operational intensity is " + std::to_string(count[1] / (float) count[0]) + " bytes/insts");
-				errs() << generateSeparator();
 				break;
 			case COUNT_MODE_NMI:
 				errs() << generateLine("Longest path (bytes transferred) for __kernel function is " + std::to_string(count[0]));
 				errs() << generateLine("Number of instructions in this path is " + std::to_string(count[1]));
 				errs() << generateLine("Naive memory intensity is " + std::to_string(count[0] / (float) count[1]) + " bytes/insts");
-				errs() << generateSeparator();
 				break;
 			default:
 				errs() << generateLine("Longest path for __kernel function is " + std::to_string(count[0]));
-				errs() << generateSeparator();
 				break;
 		}
+		errs() << generateLine("Note: All metrics considering one work-item only.");
+		errs() << generateSeparator();
 	}
 
 	// This pass performed no modifications in this code
@@ -213,8 +213,8 @@ OpCount::SimplifiedGraph::SimplifiedGraph(
 		S.pop();
 
 		// Mark node as visited
-		if(0 == visited.count(T->getName()))
-			visited.insert(T->getName());
+		if(0 == visited.count(getBBID(*T)))
+			visited.insert(getBBID(*T));
 
 		// Iterate through all successors
 		bool isLeaf = true;
@@ -222,21 +222,21 @@ OpCount::SimplifiedGraph::SimplifiedGraph(
 			const BasicBlock *sT = *sit;
 
 			// Consider only successors that are not accessed by a back-edge
-			if(FBP.end() == std::find(FBP.begin(), FBP.end(), BackedgePair(T->getName(), sT->getName()))) {
+			if(FBP.end() == std::find(FBP.begin(), FBP.end(), BackedgePair(getBBID(*T), getBBID(*sT)))) {
 
 				// If this node was not visited, add edge and push sT to stack
-				if(0 == visited.count(sT->getName()))
+				if(0 == visited.count(getBBID(*sT)))
 					S.push(sT);
 
-				// Add edge leaving from T to sT
+				// Add edge leaving from T to sT. Multiply by loops trip counts if applicable
 				isLeaf = false;
-				addEdge(T->getName(), sT->getName(), countNodeInsts(*T) * tripCountsFactor(*T, LD));
+				addEdge(getBBID(*T), getBBID(*sT), countNodeInsts(*T) * tripCountsFactor(*T, LD));
 			}
 		}
 
 		// If no edges were added, this is a leaf basic block. Connect to terminator node
 		if(isLeaf)
-			addEdge(T->getName(), "terminator", countNodeInsts(*T) * tripCountsFactor(*T, LD));
+			addEdge(getBBID(*T), "terminator", countNodeInsts(*T) * tripCountsFactor(*T, LD));
 	}
 }
 
@@ -281,7 +281,7 @@ int4 OpCount::SimplifiedGraph::getLongestPath(std::string s) {
 	// Reset distances vector
 	if(verbose) errs() << generateLine("Resetting distances vector", baseLevel);
 	for(auto &U : adj)
-		distances[U.first][0] = std::numeric_limits<int>::min();
+		distances[U.first][0] = std::numeric_limits<int64_t>::min();
 	distances[s][0] = 0;
 
 	if(verbose) errs() << generateLine("Popping from stack", baseLevel);
@@ -293,8 +293,8 @@ int4 OpCount::SimplifiedGraph::getLongestPath(std::string s) {
 
 		// Update distances if applicable. Only the first value from distance tuple is used
 		// in the verification, however all values in the tuple are updated
-		if(distances[u][0] != std::numeric_limits<int>::min()) {
-			if(verbose) errs() << generateLine("Finding succeeders (loops are nodes)", baseLevel + 2);
+		if(distances[u][0] != std::numeric_limits<int64_t>::min()) {
+			if(verbose) errs() << generateLine("Finding succeeders", baseLevel + 2);
 			for(auto &V : adj[u]) {
 				if(verbose) errs() << generateLine("Found " + V.first, baseLevel + 3);
 				if(distances[V.first][0] < (distances[u][0] + V.second[0]))
@@ -303,13 +303,18 @@ int4 OpCount::SimplifiedGraph::getLongestPath(std::string s) {
 		}
 	}
 
+	// Get the longest distance from s to terminator
+	int4 finally = distances["terminator"];
+
+#if 0
 	// Get the longest distance in the distances vector
 	int4 finally;
-	finally[0] = std::numeric_limits<int>::min();
+	finally[0] = std::numeric_limits<int64_t>::min();
 	for(auto &d : distances) {
 		if(d.second[0] > finally[0])
 			finally = d.second;
 	}
+#endif
 
 	switch(countMode) {
 		case COUNT_MODE_NOI:
@@ -335,8 +340,8 @@ int4 OpCount::SimplifiedGraph::getLongestPath(std::string s) {
 
 // Check if basic block BB is inside one or more loops. If positive, return the product of all loop trip counts
 // that contains BB
-int OpCount::SimplifiedGraph::tripCountsFactor(const BasicBlock &BB, LoopsDescription &LD) {
-	int factor = 1;
+int64_t OpCount::SimplifiedGraph::tripCountsFactor(const BasicBlock &BB, LoopsDescription &LD) {
+	int64_t factor = 1;
 
 	// Search all loops that this BB is contained. Multiply the factor by these loops trip counts
 	for(auto &L : LD) {
@@ -527,26 +532,26 @@ void OpCount::AnalyserInterface::refresh(void) {
 /// Add a loop to LoopsDescription. If such loop has a subloop, this function
 /// is called recursively.
 void OpCount::handleLoop(Loop &L, AnalyserInterface &AI, LoopsDescription &LD, unsigned int level) {
-
 	// Iterate through all loops with depth + 1 relative to this loop
 	for(Loop *SL : L.getSubLoops()) {
-		unsigned int depth = SL->getLoopDepth();
+		int64_t depth = SL->getLoopDepth();
 
 		// Get trip count if available, use default if not
-		const SCEV *backedgeCount = AI.getSE().hasLoopInvariantBackedgeTakenCount(&L)? AI.getSE().getMaxBackedgeTakenCount(&L) : NULL;
-		unsigned int tripCount;
-		if(backedgeCount && !isa<SCEVCouldNotCompute>(backedgeCount))
-			tripCount = cast<SCEVConstant>(backedgeCount)->getValue()->getZExtValue() + 1;
+		const SCEV *backedgeCount = AI.getSE().hasLoopInvariantBackedgeTakenCount(SL)? AI.getSE().getBackedgeTakenCount(SL) : NULL;
+		const SCEVConstant *takenCount;
+		uint64_t tripCount;
+		if(backedgeCount && !isa<SCEVCouldNotCompute>(backedgeCount) && (takenCount = dyn_cast<SCEVConstant>(backedgeCount)))
+			tripCount = takenCount->getValue()->getZExtValue() + 1;
 		else
 			tripCount = (1 == depth)? defaultTripCount : defaultInnerTripCount;
 
 		// Create and populate a LoopDescription. Insert it afterwards in LD
 		LoopDescription desc(depth, tripCount);
 		for(BasicBlock *B : SL->blocks())
-			desc.BBs.push_back(B->getName());
-		LD.insert(LoopDescriptionPair(SL->getName(), desc));
+			desc.BBs.push_back(getBBID(*B));
+		LD.insert(LoopDescriptionPair(getLoopID(*SL), desc));
 
-		if(verbose) errs() << generateLine("Found loop " + SL->getName().str() + " (trip count: " + std::to_string(tripCount) + ")", level);
+		if(verbose) errs() << generateLine("Found loop " + getLoopID(*SL) + " (inferred trip count: " + std::to_string(tripCount) + ")", level);
 
 		// Call handleLoop for this subloop
 		handleLoop(*SL, AI, LD, level + 1);
@@ -612,23 +617,24 @@ int4 OpCount::handleFunction(Function &F, DataLayout &DL, unsigned int level) {
 #endif
 	// Iterate through all top-level loops
 	for(Loop *L : AI.getLoopInfo()) {
-		unsigned int depth = L->getLoopDepth();
+		int64_t depth = L->getLoopDepth();
 
 		// Get trip count if available, use default if not
-		const SCEV *backedgeCount = AI.getSE().hasLoopInvariantBackedgeTakenCount(L)? AI.getSE().getMaxBackedgeTakenCount(L) : NULL;
-		unsigned int tripCount;
-		if(backedgeCount && !isa<SCEVCouldNotCompute>(backedgeCount))
-			tripCount = cast<SCEVConstant>(backedgeCount)->getValue()->getZExtValue() + 1;
+		const SCEV *backedgeCount = AI.getSE().hasLoopInvariantBackedgeTakenCount(L)? AI.getSE().getBackedgeTakenCount(L) : NULL;
+		const SCEVConstant *takenCount;
+		uint64_t tripCount;
+		if(backedgeCount && !isa<SCEVCouldNotCompute>(backedgeCount) && (takenCount = dyn_cast<SCEVConstant>(backedgeCount)))
+			tripCount = takenCount->getValue()->getZExtValue() + 1;
 		else
 			tripCount = (1 == depth)? defaultTripCount : defaultInnerTripCount;
 
 		// Create and populate a LoopDescription. Insert it afterwards in LD
 		LoopDescription desc(depth, tripCount);
 		for(BasicBlock *B : L->blocks())
-			desc.BBs.push_back(B->getName());
-		LD.insert(LoopDescriptionPair(L->getName(), desc));
+			desc.BBs.push_back(getBBID(*B));
+		LD.insert(LoopDescriptionPair(getLoopID(*L), desc));
 
-		if(verbose) errs() << generateLine("Found loop " + L->getName().str() + " (trip count: " + std::to_string(tripCount) + ")", level + 1);
+		if(verbose) errs() << generateLine("Found loop " + getLoopID(*L) + " (inferred trip count: " + std::to_string(tripCount) + ")", level + 1);
 
 		// Call handleLoop for this loop
 		handleLoop(*L, AI, LD, level + 2);
@@ -640,7 +646,7 @@ int4 OpCount::handleFunction(Function &F, DataLayout &DL, unsigned int level) {
 	FunctionBackedgesPairs FBP;
 	FindFunctionBackedges(F, FBPSV);
 	for(std::pair<const BasicBlock *, const BasicBlock *> P : FBPSV)
-		FBP.push_back(BackedgePair(P.first->getName(), P.second->getName()));
+		FBP.push_back(BackedgePair(getBBID(*(P.first)), getBBID(*(P.second))));
 
 	// Calculate longest path for this function
 	if(verbose) errs() << generateLine("Calculating longest path of function", level);
@@ -649,7 +655,7 @@ int4 OpCount::handleFunction(Function &F, DataLayout &DL, unsigned int level) {
 	SimplifiedGraph G(this, F.getEntryBlock(), LD, DL, FBP, countMode, verbose, level + 2);
 	if(verbose) errs() << generateLine("Finding longest path", level + 1);
 	// Find the longest path for this function and cache it in FD
-	int4 count = G.getLongestPath(F.getEntryBlock().getName());
+	int4 count = G.getLongestPath(getBBID(F.getEntryBlock()));
 	FD.insert(FunctionDescriptionPair(F.getName(), count));
 
 	// Return the longest path count for this function

@@ -15,6 +15,8 @@
 
 #include "int4.h"
 
+#include <cstdint>
+
 namespace opcountutils {
 
 /// Create an int4 with all values assigned to 0.
@@ -24,7 +26,7 @@ int4::int4(void) {
 }
 
 /// Create an int4 using an int[4] array.
-int4::int4(int input[4]) {
+int4::int4(int64_t input[4]) {
 	for(int i = 0; i < 4; i++)
 		this->v[i] = input[i];
 }
@@ -38,7 +40,7 @@ int4 int4::operator+(const int4 &b) {
 }
 
 /// Operator int4 * int: for i = [0..4], multiply the i-th element of this int4 by b.
-int4 int4::operator*(const int &b) {
+int4 int4::operator*(const int64_t &b) {
 	int4 result;
 	for(int i = 0; i < 4; i++)
 		result[i] = this->v[i] * b;
@@ -60,7 +62,7 @@ int4 &int4::operator+=(const int4 &b) {
 }
 
 /// Operator []: get i-th element of int4.
-int &int4::operator[](int i) {
+int64_t &int4::operator[](int i) {
 	return v[i];
 }
 

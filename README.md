@@ -29,6 +29,7 @@ This repository should be placed inside the LLVM source tree under the folder ``
 * ```LoopsDescription.cpp|h```: source and header files for LoopsDescription type;
 * ```FunctionsDescription.h```: header file for FunctionsDescription type;
 * ```int4.cpp|h```: source and header files for int4 (4-tuple integer) class;
+* ```helper.cpp|h```: source and header files for helper functions, such as console printing and basic block label retrieval;
 * ```OpCount.cpp|h```: source and header files for the pass itself and some inner classes.
 
 ## How to compile

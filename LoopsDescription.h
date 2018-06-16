@@ -19,6 +19,7 @@
 // Local includes
 #include "int4.h"
 
+#include <cstdint>
 #include <map>
 #include <vector>
 
@@ -32,7 +33,7 @@ namespace opcountutils {
 /// Loop descriptor.
 struct LoopDescription {
 	/// Loop depth (greater than 1).
-	unsigned int depth;
+	int64_t depth;
 	/// Name of all basic blocks contained in this loop.
 	std::vector<std::string> BBs;
 
@@ -40,11 +41,11 @@ struct LoopDescription {
 	int4 count;
 
 	/// Amount of times this loop is repeated.
-	unsigned int tripCount;
+	int64_t tripCount;
 
 	LoopDescription();
 
-	LoopDescription(unsigned int depth, unsigned int tripCount);
+	LoopDescription(int64_t depth, int64_t tripCount);
 
 	/// Return true if this loop contains basic block BB.
 	bool contains(const BasicBlock &BB);
