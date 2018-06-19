@@ -58,6 +58,16 @@ std::string getBBID(const BasicBlock &BB);
 /// inside a function.
 std::string getLoopID(const Loop &L);
 
+//===--------------------------------------------------------------------===//
+// Helper functions for FPOps count mode.
+//===--------------------------------------------------------------------===//
+
+/// Return true if any operand or return value of this function uses floating-point type.
+bool hasFPOperandOrReturn(const Function &F);
+
+/// Return true if any operand of this instruction uses floating-point type.
+bool hasFPOperand(const Instruction &I);
+
 }
 
 #endif

@@ -69,10 +69,9 @@ OpCount::OpCount() : ModulePass(ID) {
 
 	// Select count mode (or use "all" if not defined)
 	if(CountModeProvided.hasValue()) {
-		if("fp" == *CountModeProvided) {
-			// TODO
-			countMode = COUNT_MODE_FP;
-			countModeStr = "fp";
+		if("fpops" == *CountModeProvided) {
+			countMode = COUNT_MODE_FPOPS;
+			countModeStr = "fpops";
 		}
 		else if("noi" == *CountModeProvided) {
 			countMode = COUNT_MODE_NOI;
@@ -93,7 +92,6 @@ OpCount::OpCount() : ModulePass(ID) {
 		else {
 			countMode = COUNT_MODE_ALL;
 			countModeStr = "all";
-
 		}
 	}
 	else {
@@ -124,6 +122,10 @@ bool OpCount::runOnModule(Module &M) {
 	errs() << generateLine("Verbose: " + std::to_string(verbose), 1);
 	// Print assumptions specific to countMode
 	switch(countMode) {
+		case COUNT_MODE_FPOPS:
+			errs() << generateLine("Default undefined FPOps count: " + std::to_string(defaultUndefinedFunctionCount[0]), 1);
+			errs() << generateLine("NOTE: only if any function operand or return are FP", 1);
+			break;
 		case COUNT_MODE_NOI:
 			errs() << generateLine("Default undefined function count: " + std::to_string(defaultUndefinedFunctionCount[0]), 1);
 			errs() << generateLine("Default undefined function byte store count: " + std::to_string(defaultUndefinedFunctionCount[1]), 1);
@@ -163,6 +165,9 @@ bool OpCount::runOnModule(Module &M) {
 		errs() << generateSeparator();
 		errs() << generateLine("Count mode: " + countModeStr);
 		switch(countMode) {
+			case COUNT_MODE_FPOPS:
+				errs() << generateLine("Longest path (FPOps) for __kernel function is " + std::to_string(count[0]));
+				break;
 			case COUNT_MODE_NOI:
 				errs() << generateLine("Longest path for __kernel function is " + std::to_string(count[0]));
 				errs() << generateLine("Number of bytes transferred in this path is " + std::to_string(count[1]));
@@ -317,6 +322,9 @@ int4 OpCount::SimplifiedGraph::getLongestPath(std::string s) {
 #endif
 
 	switch(countMode) {
+		case COUNT_MODE_FPOPS:
+			if(verbose) errs() << generateLine("Longest path (FPOps) is " + std::to_string(finally[0]), baseLevel);
+			break;
 		case COUNT_MODE_NOI:
 			if(verbose) errs() << generateLine("Longest path is " + std::to_string(finally[0]), baseLevel);
 			if(verbose) errs() << generateLine("Number of transferred bytes is " + std::to_string(finally[1]), baseLevel);
@@ -358,9 +366,21 @@ int4 OpCount::SimplifiedGraph::countNodeInsts(const BasicBlock &BB) {
 
 	// Count based on count mode
 	switch(countMode) {
-		// Floating-point arithmetic
-		case OpCount::COUNT_MODE_FP:
-			// TODO
+		// Floating-point operations
+		case OpCount::COUNT_MODE_FPOPS:
+			// If any of the instruction's operand is FP, count
+			for(const Instruction &I : BB) {
+				// If this instruction is a call method, its longest path must be calculated as well
+				if(isa<CallInst>(I)) {
+					Function *IF = cast<CallInst>(I).getCalledFunction();
+					errs() << generateLine("Found function: " + IF->getName().str(), baseLevel);
+					count += opCountInst->handleFunction(*IF, *DL, baseLevel + 1);
+				}
+				// Else, count if this instruction has any FP operand
+				else if(hasFPOperand(I)) {
+					(count[0])++;
+				}
+			}
 			break;
 		// Naive Operational Intensity
 		case OpCount::COUNT_MODE_NOI:
@@ -568,6 +588,9 @@ int4 OpCount::handleFunction(Function &F, DataLayout &DL, unsigned int level) {
 		int4 count = FD[F.getName()];
 
 		switch(countMode) {
+			case COUNT_MODE_FPOPS:
+				if(verbose) errs() << generateLine("Found cached FPOps count: " + std::to_string(count[0]), level);
+				break;
 			case COUNT_MODE_NOI:
 				if(verbose) errs() << generateLine("Found cached inst count: " + std::to_string(count[0]), level);
 				if(verbose) errs() << generateLine("Found cached byte transfer count: " + std::to_string(count[1]), level);
@@ -585,22 +608,38 @@ int4 OpCount::handleFunction(Function &F, DataLayout &DL, unsigned int level) {
 	}
 	// If this function is empty, use defaultUndefinedFunctionCount
 	else if(!F.size()) {
+		int4 undefinedFunctionCount = defaultUndefinedFunctionCount;
+
 		switch(countMode) {
+			case COUNT_MODE_FPOPS:
+				// If function has FP operand or FP return value, undefinedFunctionCount is used
+				if(hasFPOperandOrReturn(F)) {
+					if(verbose) errs() << generateLine("Function is undefined", level);
+					if(verbose) errs() << generateLine("Function has FP operand or return value", level);
+					if(verbose) errs() << generateLine("Assuming default count: " + std::to_string(undefinedFunctionCount[0]), level);
+				}
+				// Else, undefinedFunctionCount is 0
+				else {
+					if(verbose) errs() << generateLine("Function is undefined", level);
+					if(verbose) errs() << generateLine("Function has no FP operand or return value. Assuming count to 0", level);
+					undefinedFunctionCount = int4();
+				}
+				break;
 			case COUNT_MODE_NOI:
-				if(verbose) errs() << generateLine("Function is undefined. Assuming default count: " + std::to_string(defaultUndefinedFunctionCount[0]), level);
-				if(verbose) errs() << generateLine("Function is undefined. Assuming default byte transfer count: " + std::to_string(defaultUndefinedFunctionCount[1]), level);
+				if(verbose) errs() << generateLine("Function is undefined. Assuming default count: " + std::to_string(undefinedFunctionCount[0]), level);
+				if(verbose) errs() << generateLine("Function is undefined. Assuming default byte transfer count: " + std::to_string(undefinedFunctionCount[1]), level);
 				break;
 			case COUNT_MODE_NMI:
-				if(verbose) errs() << generateLine("Function is undefined. Assuming default byte transfer count: " + std::to_string(defaultUndefinedFunctionCount[0]), level);
-				if(verbose) errs() << generateLine("Function is undefined. Assuming default count: " + std::to_string(defaultUndefinedFunctionCount[1]), level);
+				if(verbose) errs() << generateLine("Function is undefined. Assuming default byte transfer count: " + std::to_string(undefinedFunctionCount[0]), level);
+				if(verbose) errs() << generateLine("Function is undefined. Assuming default count: " + std::to_string(undefinedFunctionCount[1]), level);
 				break;
 			default:
-				if(verbose) errs() << generateLine("Function is undefined. Assuming default count: " + std::to_string(defaultUndefinedFunctionCount[0]), level);
+				if(verbose) errs() << generateLine("Function is undefined. Assuming default count: " + std::to_string(undefinedFunctionCount[0]), level);
 				break;
 		}
 
-		FD.insert(FunctionDescriptionPair(F.getName(), defaultUndefinedFunctionCount));
-		return defaultUndefinedFunctionCount;
+		FD.insert(FunctionDescriptionPair(F.getName(), undefinedFunctionCount));
+		return undefinedFunctionCount;
 	}
 		
 	// Generate LoopDescription for all loops in this function

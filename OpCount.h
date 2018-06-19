@@ -91,7 +91,7 @@ struct OpCount : public ModulePass {
 		// All instructions are counted for longest path.
 		COUNT_MODE_ALL = 0,
 		// Only floating-point ops are counted for longest path.
-		COUNT_MODE_FP = 1,
+		COUNT_MODE_FPOPS = 1,
 		// Naive operational intensity: all instructions are counted for longest path.
 		// Along this path, all load and stores are counted as well.
 		COUNT_MODE_NOI = 2,

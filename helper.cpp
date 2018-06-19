@@ -75,4 +75,33 @@ std::string getLoopID(const Loop &L) {
 	return getBBID(*(L.getHeader()));
 }
 
+//===--------------------------------------------------------------------===//
+// Helper functions for FPOps count mode.
+//===--------------------------------------------------------------------===//
+
+/// Return true if any operand or return value of this function uses floating-point type.
+bool hasFPOperandOrReturn(const Function &F) {
+	if(F.getReturnType()->isFPOrFPVectorTy())
+		return true;
+
+	for(Function::const_arg_iterator ait = F.arg_begin(); ait != F.arg_end(); ait++) {
+		const Argument &A = *ait;
+		if(A.getType()->isFPOrFPVectorTy())
+			return true;
+	}
+
+	return false;
+}
+
+/// Return true if any operand of this instruction uses floating-point type.
+bool hasFPOperand(const Instruction &I) {
+	for(User::const_op_iterator oit = I.op_begin(); oit != I.op_end(); oit++) {
+		const Value &V = **oit;
+		if(V.getType()->isFPOrFPVectorTy())
+			return true;
+	}
+
+	return false;
+}
+
 }
