@@ -89,6 +89,14 @@ OpCount::OpCount() : ModulePass(ID) {
 			// Assuming load/stores are 30% of all instructions and all transfers 4 bytes (0.3 * 4)
 			defaultUndefinedFunctionCount[0] = defaultUndefinedFunctionCount[1] * 1.2;
 		}
+		else if("bars" == *CountModeProvided) {
+			countMode = COUNT_MODE_BARS;
+			countModeStr = "bars";
+
+			// If no default undefined function count is provided, we assume 0 since it is very unlikely to find barriers inside functions
+			defaultUndefinedFunctionCount[0] = (DefUndefinedFunctionCountProvided.hasValue() && (*DefUndefinedFunctionCountProvided != 0))?
+				*DefUndefinedFunctionCountProvided : 0;
+		}
 		else {
 			countMode = COUNT_MODE_ALL;
 			countModeStr = "all";
@@ -123,7 +131,7 @@ bool OpCount::runOnModule(Module &M) {
 	// Print assumptions specific to countMode
 	switch(countMode) {
 		case COUNT_MODE_FPOPS:
-			errs() << generateLine("Default undefined FPOps count: " + std::to_string(defaultUndefinedFunctionCount[0]), 1);
+			errs() << generateLine("Default undefined function FPOps count: " + std::to_string(defaultUndefinedFunctionCount[0]), 1);
 			errs() << generateLine("NOTE: only if any function operand or return are FP", 1);
 			break;
 		case COUNT_MODE_NOI:
@@ -133,6 +141,9 @@ bool OpCount::runOnModule(Module &M) {
 		case COUNT_MODE_NMI:
 			errs() << generateLine("Default undefined function count: " + std::to_string(defaultUndefinedFunctionCount[1]), 1);
 			errs() << generateLine("Default undefined function byte store count: " + std::to_string(defaultUndefinedFunctionCount[0]), 1);
+			break;
+		case COUNT_MODE_BARS:
+			errs() << generateLine("Default undefined function barriers count: " + std::to_string(defaultUndefinedFunctionCount[0]), 1);
 			break;
 		default:
 			errs() << generateLine("Default undefined function count: " + std::to_string(defaultUndefinedFunctionCount[0]), 1);
@@ -177,6 +188,9 @@ bool OpCount::runOnModule(Module &M) {
 				errs() << generateLine("Longest path (bytes transferred) for __kernel function is " + std::to_string(count[0]));
 				errs() << generateLine("Number of instructions in this path is " + std::to_string(count[1]));
 				errs() << generateLine("Naive memory intensity is " + std::to_string(count[0] / (float) count[1]) + " bytes/insts");
+				break;
+			case COUNT_MODE_BARS:
+				errs() << generateLine("Longest path (barriers) for __kernel function is " + std::to_string(count[0]));
 				break;
 			default:
 				errs() << generateLine("Longest path for __kernel function is " + std::to_string(count[0]));
@@ -333,6 +347,9 @@ int4 OpCount::SimplifiedGraph::getLongestPath(std::string s) {
 			if(verbose) errs() << generateLine("Longest path (transferred bytes) is " + std::to_string(finally[0]), baseLevel);
 			if(verbose) errs() << generateLine("Number of instructions is " + std::to_string(finally[1]), baseLevel);
 			break;
+		case COUNT_MODE_BARS:
+			errs() << generateLine("Longest path (barriers) is " + std::to_string(finally[0]));
+			break;
 		default:
 			if(verbose) errs() << generateLine("Longest path is " + std::to_string(finally[0]), baseLevel);
 			break;
@@ -427,6 +444,24 @@ int4 OpCount::SimplifiedGraph::countNodeInsts(const BasicBlock &BB) {
 					Function *IF = cast<CallInst>(I).getCalledFunction();
 					errs() << generateLine("Found function: " + IF->getName().str(), baseLevel);
 					count += opCountInst->handleFunction(*IF, *DL, baseLevel + 1);
+				}
+			}
+			break;
+		// Barriers
+		case OpCount::COUNT_MODE_BARS:
+			for(const Instruction &I : BB) {
+				// If this instruction is a call method, check if it is barrier(). If positive, count. Else,
+				// its longest path must be calculated as well
+				if(isa<CallInst>(I)) {
+					Function *IF = cast<CallInst>(I).getCalledFunction();
+
+					if("barrier" == IF->getName()) {
+						(count[0])++;
+					}
+					else {
+						errs() << generateLine("Found function: " + IF->getName().str(), baseLevel);
+						count += opCountInst->handleFunction(*IF, *DL, baseLevel + 1);
+					}
 				}
 			}
 			break;
@@ -550,8 +585,12 @@ void OpCount::AnalyserInterface::refresh(void) {
 //===--------------------------------------------------------------------===//
 
 /// Add a loop to LoopsDescription. If such loop has a subloop, this function
-/// is called recursively.
-void OpCount::handleLoop(Loop &L, AnalyserInterface &AI, LoopsDescription &LD, unsigned int level) {
+/// is called recursively. This function returns the largest nested trip counts
+/// among all sub-loops.
+int64_t OpCount::handleLoop(Loop &L, AnalyserInterface &AI, LoopsDescription &LD, unsigned int level) {
+	// All trip counts of sub-loops multiplied
+	int64_t largestTC = 1;
+
 	// Iterate through all loops with depth + 1 relative to this loop
 	for(Loop *SL : L.getSubLoops()) {
 		int64_t depth = SL->getLoopDepth();
@@ -574,8 +613,16 @@ void OpCount::handleLoop(Loop &L, AnalyserInterface &AI, LoopsDescription &LD, u
 		if(verbose) errs() << generateLine("Found loop " + getLoopID(*SL) + " (inferred trip count: " + std::to_string(tripCount) + ")", level);
 
 		// Call handleLoop for this subloop
-		handleLoop(*SL, AI, LD, level + 1);
+		int64_t largestTCCandidate = handleLoop(*SL, AI, LD, level + 1);
+
+		// If the trip count of this sub-loop multiplied by all sub-sub-loops surpasses the current maximum, save it
+		largestTCCandidate *= tripCount;
+		if(largestTCCandidate > largestTC)
+			largestTC = largestTCCandidate;
 	}
+
+	// Return the largest nested trip count
+	return largestTC;
 }
 
 /// Calculate metrics for this function.
@@ -598,6 +645,9 @@ int4 OpCount::handleFunction(Function &F, DataLayout &DL, unsigned int level) {
 			case COUNT_MODE_NMI:
 				if(verbose) errs() << generateLine("Found cached byte transfer count: " + std::to_string(count[0]), level);
 				if(verbose) errs() << generateLine("Found cached inst count: " + std::to_string(count[1]), level);
+				break;
+			case COUNT_MODE_BARS:
+				if(verbose) errs() << generateLine("Found cached barriers count: " + std::to_string(count[0]), level);
 				break;
 			default:
 				if(verbose) errs() << generateLine("Found cached inst count: " + std::to_string(count[0]), level);
@@ -633,6 +683,9 @@ int4 OpCount::handleFunction(Function &F, DataLayout &DL, unsigned int level) {
 				if(verbose) errs() << generateLine("Function is undefined. Assuming default byte transfer count: " + std::to_string(undefinedFunctionCount[0]), level);
 				if(verbose) errs() << generateLine("Function is undefined. Assuming default count: " + std::to_string(undefinedFunctionCount[1]), level);
 				break;
+			case COUNT_MODE_BARS:
+				if(verbose) errs() << generateLine("Function is undefined. Assuming default barriers count: " + std::to_string(undefinedFunctionCount[0]), level);
+				break;
 			default:
 				if(verbose) errs() << generateLine("Function is undefined. Assuming default count: " + std::to_string(undefinedFunctionCount[0]), level);
 				break;
@@ -644,16 +697,8 @@ int4 OpCount::handleFunction(Function &F, DataLayout &DL, unsigned int level) {
 		
 	// Generate LoopDescription for all loops in this function
 	if(verbose) errs() << generateLine("Generating loops database", level);
-#if 0
-	// These 5 lines are similar to getAnalysis<LoopInfoWrapperPass>(F).getLoopInfo(). However, since this
-	// function may be called several times recursively, each call to getLoopInfo() destroys its older
-	// reference. This does not happen when LoopInfo is created based on the DominatorTree
-	DominatorTree DT = DominatorTree();
-	DT.recalculate(F);
-	LoopInfo LI;
-	LI.releaseMemory();
-	LI.analyze(DT);
-#endif
+	int64_t largestTC = 1;
+	int64_t deepestDepth = 0;
 	// Iterate through all top-level loops
 	for(Loop *L : AI.getLoopInfo()) {
 		int64_t depth = L->getLoopDepth();
@@ -676,8 +721,23 @@ int4 OpCount::handleFunction(Function &F, DataLayout &DL, unsigned int level) {
 		if(verbose) errs() << generateLine("Found loop " + getLoopID(*L) + " (inferred trip count: " + std::to_string(tripCount) + ")", level + 1);
 
 		// Call handleLoop for this loop
-		handleLoop(*L, AI, LD, level + 2);
+		int64_t largestTCCandidate = handleLoop(*L, AI, LD, level + 2);
+
+		// If the trip count of this loop multiplied by all sub-loops surpasses the current maximum, save it
+		largestTCCandidate *= tripCount;
+		if(largestTCCandidate > largestTC)
+			largestTC = largestTCCandidate;
 	}
+
+	// All trip counts of sub-loops multiplied
+	if(verbose) errs() << generateLine("Largest nested trip count is " + std::to_string(largestTC), level);
+
+	// Get deepest loop depth
+	for(auto &P : LD) {
+		if(P.second.depth > deepestDepth)
+			deepestDepth = P.second.depth;
+	}
+	if(verbose) errs() << generateLine("Deepest loop depth is " + std::to_string(deepestDepth), level);
 
 	// Generate back edges database for eliminating cycles in SimplifiedGraph generation
 	if(verbose) errs() << generateLine("Generating back-edges database", level);

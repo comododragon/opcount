@@ -101,11 +101,12 @@ Some arguments can be passed to the pass:
 * Default inner trip count (```-def-inner-trip-count=N```): for non top-level loops with unknown trip count, use N;
 * Default undefined function count (```-def-undefined-function-count=N```): for functions that are undefined (IR not available), use N as longest path count;
 * Count mode (```-count-mode=OPT```): select count mode OPT, where OPT may be:
-	* ```all```: count all types of IR instructions.
+	* ```all```: count all types of IR instructions;
 	* ```fpops```: count only floating-point operations. An operation is considered floating-point if any of its operand is a floating-point type. For undefined functions, the undefined function count is used only if any function argument or return value is a floating point type;
 	* ```noi```: naive operational intensity. Use all instruction count for longest path, but count the number of bytes transferred from/to memory (any address space) along this path as well. At last print the number of bytes divided by the number of total instructions in the path. If an undefined function is found, default undefined function count is used for instruction count. It is assumed that 30% of such instructions are load/stores transferring 4 bytes each;
-	* ```nmi```: naive memory intensity. Use the number of bytes transferred from/to memory (any address space) for longest path, but count all instructions along this path as well. At last print the number of bytes transferred divided by the number of total instructions in the path. If an undefined function is found, default undefined function count is used for instruction count. It is assumed that 30% of such instructions are load/stores transferring 4 bytes each.
-* Verbose (```-verbose```): print a lot of stuff.
+	* ```nmi```: naive memory intensity. Use the number of bytes transferred from/to memory (any address space) for longest path, but count all instructions along this path as well. At last print the number of bytes transferred divided by the number of total instructions in the path. If an undefined function is found, default undefined function count is used for instruction count. It is assumed that 30% of such instructions are load/stores transferring 4 bytes each;
+	* ```barriers```: count number of barriers;
+* Verbose (```-verbose```): print a lot of stuff. It will also print some additional loops information.
 
 As an example, to calculate naive operational intensity using default inner trip count 32:
 ```
@@ -166,7 +167,8 @@ For now, current counts are supported:
 * All count: all instruction types are considered.
 * Floating-point operations count: all instructions with any floating-point operand is considered;
 * Naive operational intensity: after traversing the longest path using all count, divide the number of bytes transferred from/to memory in this path by the all instruction count;
-* Naive memory intensity: after traversing the longest path considering bytes transferred from/to memory, divide this number by the all instruction count in this path.
+* Naive memory intensity: after traversing the longest path considering bytes transferred from/to memory, divide this number by the all instruction count in this path;
+* Barriers: only barriers are considered.
 
 ## Acknowledgements
 

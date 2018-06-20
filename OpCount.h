@@ -97,7 +97,9 @@ struct OpCount : public ModulePass {
 		COUNT_MODE_NOI = 2,
 		// Naive memory intensity: the longest path is decided by the longest amount
 		// of loads and stores. Along this path, all instructions are counted as well.
-		COUNT_MODE_NMI = 3
+		COUNT_MODE_NMI = 3,
+		// Count barriers along the path.
+		COUNT_MODE_BARS = 4
 	};
 
 	//===--------------------------------------------------------------------===//
@@ -225,8 +227,10 @@ private:
 	// Private methods.
 	//===--------------------------------------------------------------------===//
 
-	/// Add a loop to LoopsDescription. If such loop has a subloop, this function is called recursively.
-	void handleLoop(Loop &L, AnalyserInterface &AI, LoopsDescription &LD, unsigned int level);
+	/// Add a loop to LoopsDescription. If such loop has a subloop, this function
+	/// is called recursively. This function returns the largest nested trip counts
+	/// among all sub-loops.
+	int64_t handleLoop(Loop &L, AnalyserInterface &AI, LoopsDescription &LD, unsigned int level);
 
 	/// Calculate metrics for this function.
 	int4 handleFunction(Function &F, DataLayout &DL, unsigned int level = 0);
