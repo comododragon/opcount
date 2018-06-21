@@ -697,10 +697,13 @@ int4 OpCount::handleFunction(Function &F, DataLayout &DL, unsigned int level) {
 		
 	// Generate LoopDescription for all loops in this function
 	if(verbose) errs() << generateLine("Generating loops database", level);
+	bool hasLoop = false;
 	int64_t largestTC = 1;
 	int64_t deepestDepth = 0;
 	// Iterate through all top-level loops
 	for(Loop *L : AI.getLoopInfo()) {
+		hasLoop = true;
+
 		int64_t depth = L->getLoopDepth();
 
 		// Get trip count if available, use default if not
@@ -729,15 +732,17 @@ int4 OpCount::handleFunction(Function &F, DataLayout &DL, unsigned int level) {
 			largestTC = largestTCCandidate;
 	}
 
-	// All trip counts of sub-loops multiplied
-	if(verbose) errs() << generateLine("Largest nested trip count is " + std::to_string(largestTC), level);
+	if(hasLoop) {
+		// All trip counts of sub-loops multiplied
+		if(verbose) errs() << generateLine("Largest nested trip count is " + std::to_string(largestTC), level);
 
-	// Get deepest loop depth
-	for(auto &P : LD) {
-		if(P.second.depth > deepestDepth)
-			deepestDepth = P.second.depth;
+		// Get deepest loop depth
+		for(auto &P : LD) {
+			if(P.second.depth > deepestDepth)
+				deepestDepth = P.second.depth;
+		}
+		if(verbose) errs() << generateLine("Deepest loop depth is " + std::to_string(deepestDepth), level);
 	}
-	if(verbose) errs() << generateLine("Deepest loop depth is " + std::to_string(deepestDepth), level);
 
 	// Generate back edges database for eliminating cycles in SimplifiedGraph generation
 	if(verbose) errs() << generateLine("Generating back-edges database", level);
