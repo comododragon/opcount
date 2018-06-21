@@ -348,7 +348,7 @@ int4 OpCount::SimplifiedGraph::getLongestPath(std::string s) {
 			if(verbose) errs() << generateLine("Number of instructions is " + std::to_string(finally[1]), baseLevel);
 			break;
 		case COUNT_MODE_BARS:
-			errs() << generateLine("Longest path (barriers) is " + std::to_string(finally[0]));
+			errs() << generateLine("Longest path (barriers) is " + std::to_string(finally[0]), baseLevel);
 			break;
 		default:
 			if(verbose) errs() << generateLine("Longest path is " + std::to_string(finally[0]), baseLevel);
