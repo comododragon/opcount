@@ -173,6 +173,7 @@ For now, current counts are supported:
 ## Publications
 
 This material is part of the following published paper:
+
 Perina, André Bannwart, and Vanderlei Bonato. "Mapping Estimator for OpenCL Heterogeneous Accelerators." *2018 International Conference on Field-Programmable Technology (FPT)*. IEEE, 2018.
 https://ieeexplore.ieee.org/abstract/document/8742290/
 
