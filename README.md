@@ -170,6 +170,16 @@ For now, current counts are supported:
 * Naive memory intensity: after traversing the longest path considering bytes transferred from/to memory, divide this number by the all instruction count in this path;
 * Barriers: only barriers are considered.
 
+## Publications
+
+This material is part of the following published paper:
+Perina, André Bannwart, and Vanderlei Bonato. "Mapping Estimator for OpenCL Heterogeneous Accelerators." *2018 International Conference on Field-Programmable Technology (FPT)*. IEEE, 2018.
+https://ieeexplore.ieee.org/abstract/document/8742290/
+
+If you intend to use this material in any type of research material, please do not forget to reference us!
+
 ## Acknowledgements
 
 The project author would like to thank São Paulo Research Foundation (FAPESP), who funds the research where this project is inserted (Grant 2016/18937-7).
+
+The opinions, hypotheses, conclusions or recommendations contained in this material are the sole responsibility of the author(s) and do not necessarily reflect FAPESP opinion.
